@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Observability Dashboard — Groq &amp; Ollama Telemetry</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #111827;
+      --panel-alt: #161f33;
+      --border: #1f2937;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --emerald: #10b981;
+      --cyan: #06b6d4;
+      --indigo: #6366f1;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px 32px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--emerald), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #041311;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .brand h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .mode-pill {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.16);
+      color: var(--emerald);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+    .brand p {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button, .btn-link {
+      background: var(--panel-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    button:hover, .btn-link:hover { border-color: var(--cyan); }
+    button.primary {
+      background: var(--emerald);
+      color: #052e16;
+      border-color: var(--emerald);
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button.accent {
+      background: rgba(6, 182, 212, 0.16);
+      color: var(--cyan);
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+    button.danger:hover { border-color: var(--rose); color: var(--rose); }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .kpi-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .text-emerald { color: var(--emerald); }
+    .text-cyan { color: var(--cyan); }
+    .text-amber { color: var(--amber); }
+    .text-rose { color: var(--rose); }
+
+    .playground-card {
+      background: linear-gradient(180deg, rgba(22, 31, 51, 0.9), rgba(17, 24, 39, 0.95));
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .playground-card.open { display: block; }
+    .pg-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 14px;
+    }
+    @media (max-width: 960px) {
+      .pg-grid { grid-template-columns: 1fr; }
+    }
+    .form-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 140px;
+    }
+    .form-group label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+    input, select, textarea {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    textarea { min-height: 68px; resize: vertical; }
+
+    .mid-grid {
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 1024px) {
+      .mid-grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .chart-box {
+      width: 100%;
+      height: 220px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding-top: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      min-width: 18px;
+    }
+    .bar-fill {
+      width: 100%;
+      max-width: 32px;
+      background: linear-gradient(180deg, var(--cyan), var(--indigo));
+      border-radius: 4px 4px 0 0;
+      transition: height 0.25s ease;
+      position: relative;
+    }
+    .bar-fill.has-error {
+      box-shadow: inset 0 3px 0 var(--rose);
+    }
+    .bar-label {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 6px;
+      white-space: nowrap;
+    }
+
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr.clickable:hover {
+      background: var(--panel-alt);
+      cursor: pointer;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-ok { background: rgba(16, 185, 129, 0.15); color: var(--emerald); }
+    .pill-error { background: rgba(244, 63, 94, 0.15); color: var(--rose); }
+    .pill-groq { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+    .pill-ollama { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+
+    .filters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .detail-panel {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      display: none;
+    }
+    .detail-panel pre {
+      background: var(--panel);
+      padding: 10px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 12px;
+      margin-top: 6px;
+      color: #d1d5db;
+      white-space: pre-wrap;
+    }
+    .status-toast {
+      font-size: 12px;
+      color: var(--emerald);
+      margin-top: 8px;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-badge">LO</div>
+      <div>
+        <h1>
+          LLM Observability Dashboard
+          <span class="mode-pill" id="modeBadge">Checking mode...</span>
+        </h1>
+        <p>100% Free Telemetry for Groq, Local Ollama &amp; OpenTelemetry GenAI Spans</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="accent" onclick="togglePlayground()">⚡ Live Groq &amp; Event Playground</button>
+      <button class="primary" id="seedBtn" onclick="seedDemoData()">+ Seed Demo Data</button>
+      <button onclick="exportJson()">Export JSON</button>
+      <button class="danger" onclick="clearLogs()">Clear Logs</button>
+      <a class="btn-link" href="https://github.com/taha080/llm-observability-dashboard" target="_blank" rel="noopener">GitHub Repo</a>
+    </div>
+  </header>
+
+  <section class="playground-card" id="playgroundCard">
+    <div class="card-header" style="margin-bottom:6px">
+      <span class="card-title">⚡ Live LLM Call &amp; Telemetry Playground</span>
+      <span style="font-size:12px;color:var(--muted)">Test real Groq API calls (BYOK in sessionStorage) or log custom synthetic spans</span>
+    </div>
+    <div class="pg-grid">
+      <div class="card" style="padding:16px">
+        <div class="card-title" style="margin-bottom:10px;font-size:14px">1. Live Groq API Call (Optional Free Key)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Groq API Key (sessionStorage only, never saved on server)</label>
+            <input type="password" id="pgGroqKey" placeholder="gsk_... (leave blank to use Simulator on right)" />
+          </div>
+          <div class="form-group" style="max-width:220px">
+            <label>Groq Model</label>
+            <select id="pgGroqModel">
+              <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+              <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Prompt</label>
+          <textarea id="pgGroqPrompt">Explain in 2 short sentences why tracking p95 latency and token cost matters for LLM apps.</textarea>
+        </div>
+        <button class="primary" onclick="runLiveGroqCall()">Send Live Groq Request &amp; Log Trace</button>
+        <div class="status-toast" id="pgGroqStatus"></div>
+      </div>
+
+      <div class="card" style="padding:16px">
+        <div class="card-title" style="margin-bottom:10px;font-size:14px">2. Log Custom / Simulated LLM Event (No API Key Needed)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Provider</label>
+            <select id="simProvider" onchange="syncSimModels()">
+              <option value="groq">groq</option>
+              <option value="ollama">ollama (local $0)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Model</label>
+            <select id="simModel">
+              <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+              <option value="deepseek-r1-distill-llama-70b">deepseek-r1-distill-llama-70b</option>
+              <option value="llama3.2">llama3.2</option>
+              <option value="qwen2.5-coder:7b">qwen2.5-coder:7b</option>
+            </select>
+          </div>
+          <div class="form-group" style="max-width:110px">
+            <label>Status</label>
+            <select id="simStatus">
+              <option value="ok">OK</option>
+              <option value="error">Error</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Prompt Tokens</label>
+            <input type="number" id="simPromptTokens" value="185" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Completion Tokens</label>
+            <input type="number" id="simCompletionTokens" value="420" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Latency (ms)</label>
+            <input type="number" id="simLatency" value="275" min="1" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Prompt Preview</label>
+          <input type="text" id="simPromptText" value="Summarize the daily RAG pipeline health metrics." />
+        </div>
+        <button class="primary" onclick="recordSimulatedCall()">Record LLM Event to Dashboard</button>
+        <div class="status-toast" id="simStatusToast"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Total LLM Calls</div>
+      <div class="kpi-value" id="kpiCalls">0</div>
+      <div class="kpi-sub" id="kpiSuccessSub">0 ok · 0 errors</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Tokens Processed</div>
+      <div class="kpi-value text-cyan" id="kpiTokens">0</div>
+      <div class="kpi-sub" id="kpiTokenSplit">0 in · 0 out</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Est. Cost / Cloud Saved</div>
+      <div class="kpi-value text-emerald" id="kpiCost">$0.0000</div>
+      <div class="kpi-sub" id="kpiSavings">$0.00 saved vs frontier cloud</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Latency (p50 / p95)</div>
+      <div class="kpi-value" id="kpiLatency">0 ms</div>
+      <div class="kpi-sub" id="kpiLatencySub">p99: 0 ms · avg: 0 ms</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Error Rate</div>
+      <div class="kpi-value" id="kpiErrorRate">0.0%</div>
+      <div class="kpi-sub" id="kpiThroughput">0.0 tok/s avg output</div>
+    </div>
+  </section>
+
+  <section class="mid-grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Hourly Call Volume &amp; Token Activity</span>
+        <span style="font-size:12px;color:var(--muted)" id="chartSubtitle">Last 18 hourly buckets</span>
+      </div>
+      <div class="chart-box" id="timeseriesChart"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Model Breakdown</span>
+        <span style="font-size:12px;color:var(--muted)">By Calls &amp; p95 Latency</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Model</th>
+              <th>Calls</th>
+              <th>Tokens</th>
+              <th>p95</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody id="modelTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-header">
+      <span class="card-title">Recent LLM Call Traces (Click a row to inspect prompt, response &amp; span IDs)</span>
+    </div>
+    <div class="filters">
+      <select id="filterProvider" onchange="loadCalls()">
+        <option value="">All Providers</option>
+        <option value="groq">Groq</option>
+        <option value="ollama">Ollama (Local)</option>
+      </select>
+      <select id="filterStatus" onchange="loadCalls()">
+        <option value="">All Statuses</option>
+        <option value="ok">OK</option>
+        <option value="error">Error</option>
+      </select>
+      <input type="text" id="filterSearch" placeholder="Search model, prompt, trace ID..." oninput="loadCalls()" />
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Provider</th>
+            <th>Model</th>
+            <th>Tokens (P/C)</th>
+            <th>Latency</th>
+            <th>Cost</th>
+            <th>Status</th>
+            <th>Tags</th>
+          </tr>
+        </thead>
+        <tbody id="callsTableBody"></tbody>
+      </table>
+    </div>
+    <div class="detail-panel" id="detailPanel"></div>
+  </section>
+
+  <script>
+    const STORAGE_KEY = 'llm_obs_standalone_calls_v1';
+    let isBackendConnected = false;
+
+    const MODEL_RATES = {
+      'openai/gpt-oss-20b': { provider: 'groq', in1m: 0.10, out1m: 0.50 },
+      'openai/gpt-oss-120b': { provider: 'groq', in1m: 0.15, out1m: 0.60 },
+      'llama-3.3-70b-versatile': { provider: 'groq', in1m: 0.59, out1m: 0.79 },
+      'llama-3.1-8b-instant': { provider: 'groq', in1m: 0.05, out1m: 0.08 },
+      'deepseek-r1-distill-llama-70b': { provider: 'groq', in1m: 0.75, out1m: 0.99 },
+      'mixtral-8x7b-32768': { provider: 'groq', in1m: 0.24, out1m: 0.24 },
+      'llama3.2': { provider: 'ollama', in1m: 0.0, out1m: 0.0 },
+      'qwen2.5-coder:7b': { provider: 'ollama', in1m: 0.0, out1m: 0.0 },
+      'mistral:7b': { provider: 'ollama', in1m: 0.0, out1m: 0.0 }
+    };
+
+    function estimateCost(model, pTok, cTok, provider) {
+      if (provider === 'ollama') return 0.0;
+      const r = MODEL_RATES[model] || { in1m: 0.10, out1m: 0.30 };
+      return Number(((pTok / 1e6) * r.in1m + (cTok / 1e6) * r.out1m).toFixed(8));
+    }
+
+    function estimateSavings(model, pTok, cTok, provider) {
+      const bench = (pTok / 1e6) * 2.50 + (cTok / 1e6) * 10.00;
+      const actual = estimateCost(model, pTok, cTok, provider);
+      return Math.max(0, bench - actual);
+    }
+
+    function percentile(sorted, pct) {
+      if (!sorted.length) return 0;
+      if (sorted.length === 1) return sorted[0];
+      const rank = (pct / 100) * (sorted.length - 1);
+      const low = Math.floor(rank);
+      const high = Math.ceil(rank);
+      if (low === high) return sorted[low];
+      return sorted[low] * (1 - (rank - low)) + sorted[high] * (rank - low);
+    }
+
+    function randomHex(len) {
+      let s = '';
+      const chars = '0123456789abcdef';
+      for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * 16)];
+      return s;
+    }
+
+    function getLocalCalls() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function setLocalCalls(calls) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(calls));
+      } catch (e) {}
+    }
+
+    function generateSeedCalls(count = 60) {
+      const specs = [
+        ['groq', 'deepseek-r1-distill-llama-70b', 290, 810, 520, ['reasoning', 'eval']],
+        ['ollama', 'llama3.2', 240, 390, 640, ['local', 'summarizer']],
+        ['ollama', 'qwen2.5-coder:7b', 410, 720, 820, ['local', 'codegen']],
+        ['groq', 'llama-3.3-70b-versatile', 320, 680, 380, ['agent', 'mcp']],
+        ['groq', 'llama-3.1-8b-instant', 110, 190, 95, ['router', 'fast']],
+        ['groq', 'openai/gpt-oss-20b', 160, 420, 210, ['rag', 'production']]
+      ];
+      const prompts = [
+        ['Summarize the Q3 architecture migration notes and list rollback risks.', 'Key migration steps: 1) Enable SQLite WAL mode, 2) Verify p95 latency under 400ms...'],
+        ['Write a Python FastAPI dependency that validates X-Trace-Id headers.', 'Here is a clean FastAPI dependency using Header(default=None)...'],
+        ['Extract structured invoice totals from OCR chunk #14.', '{"vendor": "Acme Cloud", "subtotal": 0.00, "currency": "USD"}'],
+        ['Classify customer ticket intent and urgency level.', '{"intent": "billing_inquiry", "urgency": "low", "confidence": 0.96}'],
+        ['Explain why local sentence-transformers embeddings save cloud spend.', 'Running all-MiniLM-L6-v2 on CPU embeds chunks locally with zero API cost...']
+      ];
+      const errors = [
+        ['RateLimitError', '429 Too Many Requests: tokens per minute limit reached on free tier'],
+        ['TimeoutError', 'Upstream inference timed out after 10000ms']
+      ];
+
+      const now = Date.now();
+      const list = [];
+      for (let i = 0; i < count; i++) {
+        const spec = specs[i % specs.length];
+        const [provider, model, bp, bc, blat, tags] = spec;
+        const pair = prompts[i % prompts.length];
+        const isErr = (i % 11 === 0 && i > 0);
+        const ts = new Date(now - Math.floor((i / count) * 22 * 3600 * 1000) - (i * 45000)).toISOString();
+        const pTok = Math.max(24, Math.round(bp * (0.82 + ((i * 17) % 36) / 100)));
+        const cTok = isErr ? 0 : Math.max(20, Math.round(bc * (0.80 + ((i * 23) % 40) / 100)));
+        const lat = Math.round(blat * (isErr ? 1.65 : (0.78 + ((i * 13) % 45) / 100)));
+        const err = errors[i % errors.length];
+
+        list.push({
+          id: count - i,
+          created_at: ts,
+          provider,
+          model,
+          prompt_tokens: pTok,
+          completion_tokens: cTok,
+          total_tokens: pTok + cTok,
+          estimated_cost_usd: estimateCost(model, pTok, cTok, provider),
+          latency_ms: lat,
+          status: isErr ? 'error' : 'ok',
+          error_type: isErr ? err[0] : null,
+          error_message: isErr ? err[1] : null,
+          prompt_preview: pair[0],
+          response_preview: isErr ? null : pair[1],
+          trace_id: randomHex(32),
+          span_id: randomHex(16),
+          tags: isErr ? [...tags, 'error'] : tags
+        });
+      }
+      return list;
+    }
+
+    async function detectMode() {
+      const badge = document.getElementById('modeBadge');
+      try {
+        const res = await fetch('/api/stats', { method: 'GET' });
+        if (res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            isBackendConnected = true;
+            badge.textContent = 'FastAPI + SQLite Backend';
+            return;
+          }
+        }
+      } catch (e) {}
+      isBackendConnected = false;
+      badge.textContent = 'Interactive Browser Mode (GitHub Pages)';
+      if (!getLocalCalls() || getLocalCalls().length === 0) {
+        setLocalCalls(generateSeedCalls(60));
+      }
+    }
+
+    function computeLocalStats(calls) {
+      if (!calls.length) {
+        return {
+          total_calls: 0, success_calls: 0, error_calls: 0, error_rate_pct: 0,
+          prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
+          estimated_cost_usd: 0, cloud_savings_usd: 0,
+          avg_latency_ms: 0, p50_latency_ms: 0, p95_latency_ms: 0, p99_latency_ms: 0,
+          avg_tokens_per_sec: 0, models: []
+        };
+      }
+      const total = calls.length;
+      const errCalls = calls.filter(c => c.status === 'error').length;
+      const pTok = calls.reduce((a, c) => a + c.prompt_tokens, 0);
+      const cTok = calls.reduce((a, c) => a + c.completion_tokens, 0);
+      const cost = calls.reduce((a, c) => a + c.estimated_cost_usd, 0);
+      const savings = calls.reduce((a, c) => a + estimateSavings(c.model, c.prompt_tokens, c.completion_tokens, c.provider), 0);
+      const lats = calls.map(c => c.latency_ms).sort((a, b) => a - b);
+      const sumLat = lats.reduce((a, b) => a + b, 0);
+
+      const byModel = {};
+      calls.forEach(c => {
+        const k = c.provider + '::' + c.model;
+        if (!byModel[k]) byModel[k] = { provider: c.provider, model: c.model, rows: [] };
+        byModel[k].rows.push(c);
+      });
+      const models = Object.values(byModel).map(g => {
+        const ml = g.rows.map(r => r.latency_ms).sort((a, b) => a - b);
+        return {
+          provider: g.provider,
+          model: g.model,
+          total_calls: g.rows.length,
+          total_tokens: g.rows.reduce((a, r) => a + r.total_tokens, 0),
+          p95_latency_ms: percentile(ml, 95),
+          estimated_cost_usd: g.rows.reduce((a, r) => a + r.estimated_cost_usd, 0)
+        };
+      }).sort((a, b) => b.total_calls - a.total_calls);
+
+      return {
+        total_calls: total,
+        success_calls: total - errCalls,
+        error_calls: errCalls,
+        error_rate_pct: (errCalls / total) * 100,
+        prompt_tokens: pTok,
+        completion_tokens: cTok,
+        total_tokens: pTok + cTok,
+        estimated_cost_usd: cost,
+        cloud_savings_usd: savings,
+        avg_latency_ms: sumLat / total,
+        p50_latency_ms: percentile(lats, 50),
+        p95_latency_ms: percentile(lats, 95),
+        p99_latency_ms: percentile(lats, 99),
+        avg_tokens_per_sec: sumLat > 0 ? (cTok / (sumLat / 1000)) : 0,
+        models
+      };
+    }
+
+    async function loadStats() {
+      const s = isBackendConnected
+        ? await (await fetch('/api/stats')).json()
+        : computeLocalStats(getLocalCalls() || []);
+
+      document.getElementById('kpiCalls').textContent = s.total_calls.toLocaleString();
+      document.getElementById('kpiSuccessSub').textContent = `${s.success_calls} ok · ${s.error_calls} errors`;
+      document.getElementById('kpiTokens').textContent = s.total_tokens.toLocaleString();
+      document.getElementById('kpiTokenSplit').textContent = `${s.prompt_tokens.toLocaleString()} in · ${s.completion_tokens.toLocaleString()} out`;
+      document.getElementById('kpiCost').textContent = `$${s.estimated_cost_usd.toFixed(4)}`;
+      document.getElementById('kpiSavings').textContent = `$${s.cloud_savings_usd.toFixed(2)} saved vs frontier cloud`;
+      document.getElementById('kpiLatency').textContent = `${Math.round(s.p50_latency_ms)} / ${Math.round(s.p95_latency_ms)} ms`;
+      document.getElementById('kpiLatencySub').textContent = `p99: ${Math.round(s.p99_latency_ms)} ms · avg: ${Math.round(s.avg_latency_ms)} ms`;
+      const errEl = document.getElementById('kpiErrorRate');
+      errEl.textContent = `${s.error_rate_pct.toFixed(1)}%`;
+      errEl.className = 'kpi-value ' + (s.error_rate_pct > 5 ? 'text-rose' : 'text-emerald');
+      document.getElementById('kpiThroughput').textContent = `${s.avg_tokens_per_sec.toFixed(1)} tok/s avg output`;
+
+      const tbody = document.getElementById('modelTableBody');
+      tbody.innerHTML = s.models.map(m => `
+        <tr>
+          <td><span class="pill pill-${m.provider}">${m.provider}</span></td>
+          <td style="font-weight:600">${m.model}</td>
+          <td>${m.total_calls}</td>
+          <td>${m.total_tokens.toLocaleString()}</td>
+          <td>${Math.round(m.p95_latency_ms)} ms</td>
+          <td>$${m.estimated_cost_usd.toFixed(4)}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="6" style="color:var(--muted)">No calls logged yet. Click "+ Seed Demo Data".</td></tr>';
+    }
+
+    async function loadTimeseries() {
+      let buckets = [];
+      if (isBackendConnected) {
+        const data = await (await fetch('/api/timeseries?granularity=hour&limit=18')).json();
+        buckets = data.buckets || [];
+      } else {
+        const calls = getLocalCalls() || [];
+        const map = {};
+        calls.forEach(c => {
+          const b = c.created_at.slice(0, 13);
+          if (!map[b]) map[b] = { bucket: b, total_calls: 0, total_tokens: 0, error_calls: 0 };
+          map[b].total_calls += 1;
+          map[b].total_tokens += c.total_tokens;
+          if (c.status === 'error') map[b].error_calls += 1;
+        });
+        buckets = Object.values(map).sort((a, b) => a.bucket.localeCompare(b.bucket)).slice(-18);
+      }
+
+      const box = document.getElementById('timeseriesChart');
+      if (!buckets.length) {
+        box.innerHTML = '<div style="color:var(--muted);margin:auto">No time-series data yet</div>';
+        return;
+      }
+      const maxCalls = Math.max(...buckets.map(b => b.total_calls), 1);
+      box.innerHTML = buckets.map(b => {
+        const pct = Math.max(10, Math.round((b.total_calls / maxCalls) * 165));
+        const label = b.bucket.slice(11, 13) + ':00';
+        const errClass = b.error_calls > 0 ? 'has-error' : '';
+        return `
+          <div class="bar-col" title="${b.bucket}: ${b.total_calls} calls, ${b.total_tokens} tokens, ${b.error_calls} errors">
+            <div class="bar-fill ${errClass}" style="height:${pct}px"></div>
+            <div class="bar-label">${label}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadCalls() {
+      const provider = document.getElementById('filterProvider').value;
+      const status = document.getElementById('filterStatus').value;
+      const q = document.getElementById('filterSearch').value.trim().toLowerCase();
+
+      let items = [];
+      if (isBackendConnected) {
+        const params = new URLSearchParams({ limit: '25' });
+        if (provider) params.set('provider', provider);
+        if (status) params.set('status', status);
+        if (q) params.set('q', q);
+        const res = await (await fetch(`/api/calls?${params.toString()}`)).json();
+        items = res.items || [];
+      } else {
+        items = (getLocalCalls() || []).filter(c => {
+          if (provider && c.provider !== provider) return false;
+          if (status && c.status !== status) return false;
+          if (q) {
+            const hay = `${c.model} ${c.prompt_preview || ''} ${c.response_preview || ''} ${c.trace_id}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        }).slice(0, 25);
+      }
+
+      const tbody = document.getElementById('callsTableBody');
+      tbody.innerHTML = items.map(c => `
+        <tr class="clickable" onclick="inspectCall(${c.id})">
+          <td style="color:var(--muted)">${c.created_at.slice(0, 19).replace('T', ' ')}</td>
+          <td><span class="pill pill-${c.provider}">${c.provider}</span></td>
+          <td style="font-weight:600">${c.model}</td>
+          <td>${c.total_tokens} <span style="color:var(--muted)">(${c.prompt_tokens}/${c.completion_tokens})</span></td>
+          <td>${Math.round(c.latency_ms)} ms</td>
+          <td>$${c.estimated_cost_usd.toFixed(5)}</td>
+          <td><span class="pill pill-${c.status}">${c.status.toUpperCase()}</span></td>
+          <td style="color:var(--muted)">${(c.tags || []).join(', ')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="8" style="color:var(--muted)">No matching calls found.</td></tr>';
+    }
+
+    async function inspectCall(id) {
+      let c = null;
+      if (isBackendConnected) {
+        c = await (await fetch(`/api/calls/${id}`)).json();
+      } else {
+        c = (getLocalCalls() || []).find(item => item.id === id);
+      }
+      if (!c) return;
+      const panel = document.getElementById('detailPanel');
+      panel.style.display = 'block';
+      panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <strong>Trace ID: ${c.trace_id} (Span: ${c.span_id})</strong>
+          <span style="color:var(--muted)">Model: ${c.provider}/${c.model} · ${c.latency_ms} ms · $${c.estimated_cost_usd.toFixed(6)}</span>
+        </div>
+        <div><strong>Prompt Preview:</strong><pre>${c.prompt_preview || '(none)'}</pre></div>
+        <div style="margin-top:10px"><strong>${c.status === 'error' ? 'Error Detail' : 'Response Preview'}:</strong>
+          <pre>${c.status === 'error' ? ((c.error_type || 'Error') + ': ' + (c.error_message || '')) : (c.response_preview || '(none)')}</pre>
+        </div>
+      `;
+    }
+
+    function togglePlayground() {
+      const el = document.getElementById('playgroundCard');
+      el.classList.toggle('open');
+      const savedKey = sessionStorage.getItem('groq_byok_key');
+      if (savedKey && !document.getElementById('pgGroqKey').value) {
+        document.getElementById('pgGroqKey').value = savedKey;
+      }
+    }
+
+    async function appendEvent(ev) {
+      if (isBackendConnected) {
+        await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ev)
+        });
+      } else {
+        const calls = getLocalCalls() || [];
+        const nextId = calls.length ? Math.max(...calls.map(c => c.id)) + 1 : 1;
+        calls.unshift({
+          id: nextId,
+          created_at: new Date().toISOString(),
+          provider: ev.provider,
+          model: ev.model,
+          prompt_tokens: ev.prompt_tokens,
+          completion_tokens: ev.completion_tokens,
+          total_tokens: ev.prompt_tokens + ev.completion_tokens,
+          estimated_cost_usd: estimateCost(ev.model, ev.prompt_tokens, ev.completion_tokens, ev.provider),
+          latency_ms: ev.latency_ms,
+          status: ev.status || 'ok',
+          error_type: ev.error_type || null,
+          error_message: ev.error_message || null,
+          prompt_preview: ev.prompt_preview,
+          response_preview: ev.response_preview,
+          trace_id: randomHex(32),
+          span_id: randomHex(16),
+          tags: ev.tags || ['playground']
+        });
+        setLocalCalls(calls);
+      }
+      await refreshAll();
+    }
+
+    async function recordSimulatedCall() {
+      const provider = document.getElementById('simProvider').value;
+      const model = document.getElementById('simModel').value;
+      const status = document.getElementById('simStatus').value;
+      const pTok = parseInt(document.getElementById('simPromptTokens').value || '100', 10);
+      const cTok = status === 'error' ? 0 : parseInt(document.getElementById('simCompletionTokens').value || '250', 10);
+      const lat = parseFloat(document.getElementById('simLatency').value || '220');
+      const prompt = document.getElementById('simPromptText').value;
+
+      await appendEvent({
+        provider,
+        model,
+        prompt_tokens: pTok,
+        completion_tokens: cTok,
+        latency_ms: lat,
+        status,
+        error_type: status === 'error' ? 'SimulatedError' : null,
+        error_message: status === 'error' ? 'Simulated upstream timeout or rate limit' : null,
+        prompt_preview: prompt,
+        response_preview: status === 'error' ? null : `Simulated ${provider}/${model} response (${cTok} tokens in ${lat} ms).`,
+        tags: ['playground', provider]
+      });
+      document.getElementById('simStatusToast').textContent = `✓ Logged ${provider}/${model} trace (${pTok + cTok} tokens, ${lat} ms)`;
+    }
+
+    async function runLiveGroqCall() {
+      const key = document.getElementById('pgGroqKey').value.trim();
+      const model = document.getElementById('pgGroqModel').value;
+      const prompt = document.getElementById('pgGroqPrompt').value.trim();
+      const toast = document.getElementById('pgGroqStatus');
+
+      if (!key) {
+        toast.style.color = 'var(--amber)';
+        toast.textContent = 'Enter a free Groq API key (gsk_...) or use the Simulator on the right.';
+        return;
+      }
+      sessionStorage.setItem('groq_byok_key', key);
+      toast.style.color = 'var(--cyan)';
+      toast.textContent = 'Calling Groq API...';
+
+      const t0 = performance.now();
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.2
+          })
+        });
+        const lat = Math.round(performance.now() - t0);
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${res.status}`;
+          await appendEvent({
+            provider: 'groq', model, prompt_tokens: 20, completion_tokens: 0,
+            latency_ms: lat, status: 'error', error_type: `HTTP_${res.status}`,
+            error_message: msg, prompt_preview: prompt, tags: ['live-groq', 'error']
+          });
+          toast.style.color = 'var(--rose)';
+          toast.textContent = `Groq Error logged (${lat} ms): ${msg}`;
+          return;
+        }
+        const usage = data.usage || {};
+        const pTok = usage.prompt_tokens || 0;
+        const cTok = usage.completion_tokens || 0;
+        const reply = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : '';
+        await appendEvent({
+          provider: 'groq', model, prompt_tokens: pTok, completion_tokens: cTok,
+          latency_ms: lat, status: 'ok', prompt_preview: prompt,
+          response_preview: reply, tags: ['live-groq', 'byok']
+        });
+        toast.style.color = 'var(--emerald)';
+        toast.textContent = `✓ Live Groq response logged! (${pTok + cTok} tokens in ${lat} ms)`;
+      } catch (err) {
+        const lat = Math.round(performance.now() - t0);
+        toast.style.color = 'var(--rose)';
+        toast.textContent = `Request failed (${lat} ms): ${err.message}`;
+      }
+    }
+
+    async function seedDemoData() {
+      if (isBackendConnected) {
+        await fetch('/api/seed?count=60', { method: 'POST' });
+      } else {
+        setLocalCalls(generateSeedCalls(60));
+      }
+      await refreshAll();
+    }
+
+    async function clearLogs() {
+      if (isBackendConnected) {
+        await fetch('/api/calls', { method: 'DELETE' });
+      } else {
+        setLocalCalls([]);
+      }
+      document.getElementById('detailPanel').style.display = 'none';
+      await refreshAll();
+    }
+
+    async function exportJson() {
+      let data = [];
+      if (isBackendConnected) {
+        const res = await (await fetch('/api/calls?limit=500')).json();
+        data = res.items || [];
+      } else {
+        data = getLocalCalls() || [];
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'llm-observability-traces.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStats(), loadTimeseries(), loadCalls()]);
+    }
+
+    (async () => {
+      await detectMode();
+      await refreshAll();
+    })();
+  </script>
+</body>
+</html>
